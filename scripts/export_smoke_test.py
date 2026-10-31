@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import shlex
 import tempfile
 from pathlib import Path
@@ -11,6 +12,14 @@ from wechat_media_exporter.scanner import scan_android
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="导出并校验一个真实手机媒体或文件")
+    parser.add_argument(
+        "--kind",
+        choices=("image", "video", "file"),
+        default="image",
+    )
+    arguments = parser.parse_args()
+
     project_root = Path(__file__).resolve().parent.parent
     adb_path = find_adb(project_root)
     if adb_path is None:
@@ -20,13 +29,17 @@ def main() -> int:
     report = scan_android(adb)
     if report.device is None:
         raise SystemExit("未发现设备。")
-    images = [item for item in report.images if item.size_bytes > 0]
-    if not images:
-        raise SystemExit("没有可用于测试导出的图片。")
+    candidates = {
+        "image": [item for item in report.images if item.size_bytes > 0],
+        "video": [item for item in report.videos if item.size_bytes > 0],
+        "file": [item for item in report.file_items if item.size_bytes > 0],
+    }[arguments.kind]
+    if not candidates:
+        raise SystemExit(f"没有可用于测试导出的 {arguments.kind} 文件。")
 
-    item = min(images, key=lambda candidate: candidate.size_bytes)
+    item = min(candidates, key=lambda candidate: candidate.size_bytes)
     item.selected = True
-    destination = project_root / "WeChatBackup" / "SmokeTest"
+    destination = project_root / "WeChatBackup" / f"SmokeTest-{arguments.kind}"
     with tempfile.TemporaryDirectory(prefix="wechat-export-test-") as temp_root:
         with HashIndex(Path(temp_root) / "index.sqlite3") as index:
             result = export_android_media(

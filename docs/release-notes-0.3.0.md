@@ -12,6 +12,12 @@
 - 增加文件数量和文件占用统计
 - 普通文件单击后下载并调用 Windows 默认应用打开
 
+## 真机验证
+
+在 OPPO Find X9 的 `/Download/Weixin` 中真实发现 2 个 `.doc` 文件。已选取其中一个
+导出到 `WeChatBackup/SmokeTest-file/2026/05/Documents/`，手机端和电脑端 SHA-256
+一致，校验通过。
+
 ## 安全边界
 
 - 微信内部日志、配置、数据库和索引文件不会进入文件列表。
