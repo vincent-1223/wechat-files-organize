@@ -163,20 +163,45 @@ class AdbClient:
         result = self.shell(serial, f"ls -la {shlex.quote(remote_path)}", timeout=20)
         return result.returncode == 0
 
-    def scan_path(self, serial: str, remote_path: str) -> tuple[str, str]:
+    def canonical_path(self, serial: str, remote_path: str) -> str:
+        result = self.shell(serial, f"realpath {shlex.quote(remote_path)}", timeout=12)
+        canonical = result.stdout.strip()
+        return canonical or remote_path
+
+    def scan_path(self, serial: str, remote_path: str) -> tuple[str, str, str]:
         quoted = shlex.quote(remote_path)
-        stat_command = f"find {quoted} -type f -exec stat -c '%s\\t%Y\\t%n' {{}} + 2>/dev/null"
+        stat_command = f"find {quoted} -type f -exec stat -c '%s|%Y|%n' {{}} +"
         result = self.shell(serial, stat_command, timeout=180)
         output = result.stdout.strip("\r\n")
         if output:
-            return output, "stat"
+            return output, "stat", result.stderr.strip()
 
         fallback = self.shell(
             serial,
-            f"find {quoted} -type f 2>/dev/null",
+            f"find {quoted} -type f",
             timeout=180,
         )
-        return fallback.stdout.strip("\r\n"), "find"
+        return fallback.stdout.strip("\r\n"), "find", fallback.stderr.strip()
+
+    def discover_wechat_directories(self, serial: str) -> list[str]:
+        parents = (
+            "/sdcard/Pictures",
+            "/sdcard/DCIM",
+            "/sdcard/tencent",
+            "/sdcard/Android/media",
+        )
+        discovered: list[str] = []
+        for parent in parents:
+            command = (
+                f"find {shlex.quote(parent)} -maxdepth 2 -type d "
+                "\\( -iname '*weixin*' -o -iname '*wechat*' \\) 2>/dev/null"
+            )
+            result = self.shell(serial, command, timeout=30)
+            for line in result.stdout.splitlines():
+                path = line.strip()
+                if path and path not in discovered:
+                    discovered.append(path)
+        return discovered
 
     def pull(self, serial: str, remote_path: str, local_path: Path) -> None:
         local_path.parent.mkdir(parents=True, exist_ok=True)

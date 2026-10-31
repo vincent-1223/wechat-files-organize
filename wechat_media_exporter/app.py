@@ -8,6 +8,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from wechat_media_exporter.adb import AdbClient, AdbError, find_adb
 from wechat_media_exporter.ui.main_window import MainWindow
 from wechat_media_exporter.ui.theme import APP_STYLESHEET
 
@@ -43,6 +44,16 @@ def main(argv: list[str] | None = None) -> int:
 
     window = MainWindow(demo=arguments.demo)
     window.show()
+
+    if not arguments.demo:
+        try:
+            adb_path = find_adb(project_root)
+            if adb_path and any(
+                device.state == "device" for device in AdbClient(adb_path).list_devices()
+            ):
+                QTimer.singleShot(250, window.start_scan)
+        except AdbError:
+            pass
 
     if arguments.screenshot:
         output = arguments.screenshot.expanduser().resolve()

@@ -19,6 +19,9 @@ Windows 桌面工具，通过 USB 和 ADB 读取 Android 手机中可访问的�
 - 扫描能力报告
 - 手动安全清理入口（默认锁定）
 
+已使用 OPPO Find X9（Android 17、微信 8.0.79）完成一轮真实只读扫描，详见
+[P0 真机验证记录](docs/p0-real-device-verification.md)。
+
 聊天记录中尚未保存到公共存储的媒体仍受 Android 权限限制。工具不会使用 Root、破解、数据库解密或 AI 上传绕过限制，也不会承诺提取全部聊天媒体。
 
 ## 开发环境
@@ -73,10 +76,17 @@ python -m venv .venv
 .\.venv\Scripts\python -m pytest
 ```
 
+仅执行 P0 扫描并生成 JSON、Markdown 报告：
+
+```powershell
+.\.venv\Scripts\python scripts\p0_scan.py
+```
+
 ## 当前限制
 
 - 首版只读取普通 ADB 权限可访问的目录。
 - 无扩展名文件会以“待识别”状态保留，不会直接当作原图。
+- 远程手机媒体当前使用占位缩略图，实际图片预览将在后续版本加入本地缓存。
 - 去重只在已有文件哈希和新导出文件哈希之间执行，不会把相似图片误判为重复。
 - 手机文件清理功能尚未开放；必须先完成导出与双重校验，再由用户手动选择文件。
 

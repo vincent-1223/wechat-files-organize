@@ -105,6 +105,8 @@ class CapabilityDialog(QDialog):
                 item.setForeground(1, Qt.GlobalColor.darkGreen)
             elif source.state in {"denied", "error"}:
                 item.setForeground(1, Qt.GlobalColor.darkRed)
+            elif source.state == "partial":
+                item.setForeground(1, Qt.GlobalColor.darkYellow)
             else:
                 item.setForeground(1, Qt.GlobalColor.darkYellow)
             tree.addTopLevelItem(item)
@@ -561,7 +563,7 @@ class MainWindow(QMainWindow):
 
     def _filtered_items(self) -> list[MediaItem]:
         items = []
-        for item in self.report.items:
+        for item in self.report.media_items:
             if self.filter_mode == "image" and item.kind != "image":
                 continue
             if self.filter_mode == "video" and item.kind != "video":
@@ -593,7 +595,7 @@ class MainWindow(QMainWindow):
             self.mode_label.setText("未连接")
 
         counts = {
-            "all": len(report.items),
+            "all": len(report.media_items),
             "image": len(report.images),
             "video": len(report.videos),
             "duplicate": len(report.duplicates),
@@ -609,7 +611,7 @@ class MainWindow(QMainWindow):
 
         self.image_stat.set_value(f"{len(report.images):,} 项")
         self.video_stat.set_value(f"{len(report.videos):,} 项")
-        self.size_stat.set_value(format_size(report.total_bytes))
+        self.size_stat.set_value(format_size(report.media_bytes))
         self.duplicate_stat.set_value(f"{len(report.duplicates):,} 项")
         self.last_scan_label.setText(
             report.scanned_at.astimezone().strftime("%m-%d %H:%M") if report.items else "尚未扫描"
@@ -618,7 +620,9 @@ class MainWindow(QMainWindow):
         readable = report.readable_sources
         total_sources = len(report.sources)
         if total_sources:
-            denied = sum(source.state in {"denied", "error"} for source in report.sources)
+            denied = sum(
+                source.state in {"denied", "error", "partial"} for source in report.sources
+            )
             self.coverage_label.setText(
                 f"{readable} / {total_sources} 个媒体来源可读取"
                 + (f"；{denied} 个目录权限不足或读取失败。" if denied else "。")
@@ -784,8 +788,8 @@ class MainWindow(QMainWindow):
             return
         if report.items:
             self._set_status(
-                f"扫描完成：发现 {len(report.items):,} 个媒体文件，用时 "
-                f"{report.elapsed_seconds:.1f} 秒。"
+                f"扫描完成：发现 {len(report.media_items):,} 个图片/视频，"
+                f"{len(report.unknown):,} 个文件待识别，用时 {report.elapsed_seconds:.1f} 秒。"
             )
         else:
             self._set_status("扫描完成，但当前目录范围内未发现可访问媒体。")

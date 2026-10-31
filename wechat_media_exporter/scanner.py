@@ -9,6 +9,7 @@ from wechat_media_exporter.media_types import classify_media_path, looks_like_th
 from wechat_media_exporter.models import MediaItem, ScanReport, SourceStatus
 
 scan_paths = (
+    "/sdcard/Pictures/WeiXin",
     "/sdcard/Pictures/Weixin",
     "/sdcard/Pictures/WeChat",
     "/sdcard/DCIM/WeChat",
@@ -23,7 +24,7 @@ ProgressCallback = Callable[[int, str], None]
 
 
 def parse_stat_line(line: str) -> tuple[int, datetime, str] | None:
-    parts = line.split("\t", 2)
+    parts = line.split("|", 2)
     if len(parts) != 3:
         return None
 
@@ -58,26 +59,40 @@ def scan_android(
     report = ScanReport(device=device_info)
     mode = "unknown"
     items_by_path: dict[str, MediaItem] = {}
+    discovered_paths = adb.discover_wechat_directories(device.serial)
+    candidates = list(scan_paths)
+    for path in discovered_paths:
+        if path not in candidates:
+            candidates.append(path)
+    seen_paths: set[str] = set()
 
-    for index, remote_root in enumerate(scan_paths):
+    for index, remote_root in enumerate(candidates):
         if should_cancel and should_cancel():
             report.warning = "扫描已取消"
             break
 
-        if progress:
-            progress(round(index / len(scan_paths) * 100), f"正在探测 {remote_root}")
-
-        if not adb.directory_exists(device.serial, remote_root):
-            report.sources.append(SourceStatus(remote_root, "missing", "目录不存在"))
+        canonical_root = adb.canonical_path(device.serial, remote_root)
+        canonical_key = canonical_root.rstrip("/").lower()
+        if canonical_key in seen_paths:
             continue
-        if not adb.directory_listable(device.serial, remote_root):
-            report.sources.append(SourceStatus(remote_root, "denied", "当前 ADB 权限无法列出目录"))
+        seen_paths.add(canonical_key)
+
+        if progress:
+            progress(round(index / len(candidates) * 100), f"正在探测 {remote_root}")
+
+        if not adb.directory_exists(device.serial, canonical_root):
+            report.sources.append(SourceStatus(canonical_root, "missing", "目录不存在"))
+            continue
+        if not adb.directory_listable(device.serial, canonical_root):
+            report.sources.append(
+                SourceStatus(canonical_root, "denied", "当前 ADB 权限无法列出目录")
+            )
             continue
 
         try:
-            output, mode = adb.scan_path(device.serial, remote_root)
+            output, mode, errors = adb.scan_path(device.serial, canonical_root)
         except AdbError as exc:
-            report.sources.append(SourceStatus(remote_root, "error", str(exc)))
+            report.sources.append(SourceStatus(canonical_root, "error", str(exc)))
             continue
 
         count = 0
@@ -95,7 +110,7 @@ def scan_android(
                 kind=kind,
                 size_bytes=size,
                 modified_at=modified_at,
-                source_root=remote_root,
+                source_root=canonical_root,
                 is_thumbnail=looks_like_thumbnail(remote_path),
                 extension=extension,
             )
@@ -104,9 +119,13 @@ def scan_android(
 
         report.sources.append(
             SourceStatus(
-                remote_root,
-                "readable" if count else "empty",
-                f"{mode} 扫描完成" if count else "目录可访问，但未发现文件",
+                canonical_root,
+                "partial" if errors and count else ("readable" if count else "empty"),
+                (
+                    "部分子目录权限不足"
+                    if errors and count
+                    else (f"{mode} 扫描完成" if count else "目录可访问，但未发现文件")
+                ),
                 count,
             )
         )

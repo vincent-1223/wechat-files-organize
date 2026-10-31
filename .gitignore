@@ -8,6 +8,7 @@ dist/
 *.spec
 *.egg-info/
 WeChatBackup/
+reports/
 screenshots/
 .tools/
 tools/adb/

@@ -35,6 +35,9 @@ def classify_media_path(path: str) -> tuple[MediaKind, str]:
         return "image", suffix
     if suffix in VIDEO_EXTENSIONS:
         return "video", suffix
+    normalized = path.replace("\\", "/").lower()
+    if not suffix and Path(normalized).name.startswith(("thumb_", "img_", "image_")):
+        return "image", ""
     return "other", suffix
 
 

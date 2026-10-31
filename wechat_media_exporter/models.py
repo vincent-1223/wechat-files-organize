@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 MediaKind = Literal["image", "video", "other"]
-SourceState = Literal["readable", "empty", "missing", "denied", "error"]
+SourceState = Literal["readable", "partial", "empty", "missing", "denied", "error"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -32,6 +32,7 @@ class SourceStatus:
     def state_label(self) -> str:
         return {
             "readable": "可读取",
+            "partial": "部分可读",
             "empty": "目录为空",
             "missing": "不存在",
             "denied": "权限不足",
@@ -104,6 +105,10 @@ class ScanReport:
         return [item for item in self.items if item.kind == "other"]
 
     @property
+    def media_items(self) -> list[MediaItem]:
+        return [item for item in self.items if item.kind in {"image", "video"}]
+
+    @property
     def thumbnails(self) -> list[MediaItem]:
         return [item for item in self.items if item.is_thumbnail]
 
@@ -116,12 +121,16 @@ class ScanReport:
         return sum(item.size_bytes for item in self.items)
 
     @property
+    def media_bytes(self) -> int:
+        return sum(item.size_bytes for item in self.media_items)
+
+    @property
     def readable_sources(self) -> int:
-        return sum(source.state in {"readable", "empty"} for source in self.sources)
+        return sum(source.state in {"readable", "partial", "empty"} for source in self.sources)
 
     def months(self) -> list[tuple[str, str, list[MediaItem]]]:
         grouped: dict[str, list[MediaItem]] = {}
-        for item in self.items:
+        for item in self.media_items:
             grouped.setdefault(item.month_key, []).append(item)
 
         result: list[tuple[str, str, list[MediaItem]]] = []

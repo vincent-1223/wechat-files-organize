@@ -43,6 +43,7 @@ def test_media_type_and_thumbnail_rules() -> None:
     assert classify_media_path("/a/photo.JPG") == ("image", ".jpg")
     assert classify_media_path("/a/video.MP4") == ("video", ".mp4")
     assert classify_media_path("/a/cache_123") == ("other", "")
+    assert classify_media_path("/a/textstatus/thumb_123") == ("image", "")
     assert looks_like_thumbnail("/sdcard/cache/th_123")
     assert looks_like_thumbnail("/sdcard/tencent/MicroMsg/emoji/a.png")
     assert not looks_like_thumbnail("/sdcard/Pictures/Weixin/IMG_001.jpg")
@@ -59,7 +60,7 @@ def test_detect_media_kind_from_file_header(tmp_path: Path) -> None:
 
 
 def test_parse_stat_line() -> None:
-    parsed = parse_stat_line("1048576\t1761705600\t/sdcard/Pictures/Weixin/a.jpg")
+    parsed = parse_stat_line("1048576|1761705600|/sdcard/Pictures/Weixin/a.jpg")
     assert parsed is not None
     size, timestamp, path = parsed
     assert size == 1_048_576
