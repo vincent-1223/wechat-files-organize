@@ -44,6 +44,7 @@ def main() -> int:
         ),
         "images": len(report.images),
         "videos": len(report.videos),
+        "files": len(report.file_items),
         "other": len(report.unknown),
         "thumbnails": len(report.thumbnails),
         "total_bytes": report.total_bytes,

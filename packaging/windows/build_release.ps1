@@ -52,7 +52,7 @@ try {
         }
 
         Copy-Item -LiteralPath $distExe `
-            -Destination (Join-Path $projectRoot "release\WeChat-Files-Organize-Portable-0.2.1.exe") `
+            -Destination (Join-Path $projectRoot "release\WeChat-Files-Organize-Portable-0.3.0.exe") `
             -Force
     }
 } finally {
@@ -60,8 +60,8 @@ try {
 }
 
 Write-Host "Release build complete."
-Write-Host "Portable: $(Join-Path $projectRoot 'release\WeChat-Files-Organize-Portable-0.2.1.exe')"
+Write-Host "Portable: $(Join-Path $projectRoot 'release\WeChat-Files-Organize-Portable-0.3.0.exe')"
 if (-not $SkipInstaller) {
-    Write-Host "Installer: $(Join-Path $projectRoot 'release\WeChat-Files-Organize-Setup-0.2.1.exe')"
+    Write-Host "Installer: $(Join-Path $projectRoot 'release\WeChat-Files-Organize-Setup-0.3.0.exe')"
 }
 

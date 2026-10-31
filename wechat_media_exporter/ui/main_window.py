@@ -70,7 +70,7 @@ class CapabilityDialog(QDialog):
 
         note = QLabel(
             "这里只展示本次真实扫描结果。普通 ADB 无法读取微信私有应用沙盒，"
-            "因此聊天记录中的全部图片和视频不在当前结果内。已保存文件和可访问外部缓存"
+            "因此聊天记录中的全部图片、视频和文件不在当前结果内。已保存内容和可访问外部缓存"
             "会正常扫描；缩略图不会冒充原图。",
             self,
         )
@@ -87,8 +87,8 @@ class CapabilityDialog(QDialog):
             device_text = "尚未连接设备"
         summary = QLabel(
             f"{device_text}    |    图片 {len(report.images):,}    "
-            f"视频 {len(report.videos):,}    待识别 {len(report.unknown):,}    "
-            f"缩略图 {len(report.thumbnails):,}",
+            f"视频 {len(report.videos):,}    文件 {len(report.file_items):,}    "
+            f"待识别 {len(report.unknown):,}    缩略图 {len(report.thumbnails):,}",
             self,
         )
         summary.setWordWrap(True)
@@ -417,7 +417,7 @@ class MainWindow(QMainWindow):
         device_layout.addLayout(device_copy, 1)
         layout.addWidget(device)
 
-        category_label = QLabel("媒体分类", sidebar)
+        category_label = QLabel("内容分类", sidebar)
         category_label.setObjectName("Meta")
         category_label.setContentsMargins(7, 14, 0, 3)
         layout.addWidget(category_label)
@@ -429,6 +429,10 @@ class MainWindow(QMainWindow):
             ("all", "全部媒体", QStyle.StandardPixmap.SP_FileDialogListView),
             ("image", "图片", QStyle.StandardPixmap.SP_FileIcon),
             ("video", "视频", QStyle.StandardPixmap.SP_MediaPlay),
+            ("document", "文档", QStyle.StandardPixmap.SP_FileIcon),
+            ("archive", "压缩包", QStyle.StandardPixmap.SP_DirIcon),
+            ("audio", "音频", QStyle.StandardPixmap.SP_MediaVolume),
+            ("file", "其他文件", QStyle.StandardPixmap.SP_FileDialogContentsView),
             ("duplicate", "重复文件", QStyle.StandardPixmap.SP_FileDialogContentsView),
         )
         for filter_mode, label, icon_type in nav_specs:
@@ -504,7 +508,7 @@ class MainWindow(QMainWindow):
         title = QLabel("媒体库", center)
         title.setObjectName("PageTitle")
         self.page_subtitle = QLabel(
-            "按类型和月份归档；单击卡片查看或播放，右上角勾选导出。", center
+            "按类型和月份归档；单击卡片查看或打开，右上角勾选导出。", center
         )
         self.page_subtitle.setObjectName("PageSubtitle")
         title_column.addWidget(title)
@@ -528,13 +532,20 @@ class MainWindow(QMainWindow):
         stats_row.setSpacing(8)
         self.image_stat = StatCard("图片", QStyle.StandardPixmap.SP_FileIcon, center)
         self.video_stat = StatCard("视频", QStyle.StandardPixmap.SP_MediaPlay, center)
+        self.file_stat = StatCard("文件", QStyle.StandardPixmap.SP_FileIcon, center)
         self.size_stat = StatCard("预计占用", QStyle.StandardPixmap.SP_DriveHDIcon, center)
         self.duplicate_stat = StatCard(
             "内容重复",
             QStyle.StandardPixmap.SP_FileDialogContentsView,
             center,
         )
-        for card in (self.image_stat, self.video_stat, self.size_stat, self.duplicate_stat):
+        for card in (
+            self.image_stat,
+            self.video_stat,
+            self.file_stat,
+            self.size_stat,
+            self.duplicate_stat,
+        ):
             stats_row.addWidget(card, 1)
         layout.addLayout(stats_row)
 
@@ -607,7 +618,11 @@ class MainWindow(QMainWindow):
             "└─ 2026<br>"
             "&nbsp;&nbsp;&nbsp;└─ 10<br>"
             "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ Images/<br>"
-            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ Videos/",
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ Videos/<br>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ Documents/<br>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ Archives/<br>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ Audio/<br>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ Files/",
             rules,
         )
         folder.setStyleSheet(
@@ -615,7 +630,7 @@ class MainWindow(QMainWindow):
             "background: #F4F6F3; border-radius: 6px; padding: 9px; color: #5F6A61;"
         )
         rules_layout.addWidget(folder)
-        rules_layout.addWidget(self._rule_row(rules, "媒体分类", "图片 / 视频"))
+        rules_layout.addWidget(self._rule_row(rules, "内容分类", "图片 / 视频 / 文件"))
         rules_layout.addWidget(self._rule_row(rules, "去重方式", "SHA-256"))
         layout.addWidget(rules)
 
@@ -721,10 +736,18 @@ class MainWindow(QMainWindow):
 
     def _filtered_items(self) -> list[MediaItem]:
         items = []
-        for item in self.report.media_items:
+        for item in self.report.library_items:
             if self.filter_mode == "image" and item.kind != "image":
                 continue
             if self.filter_mode == "video" and item.kind != "video":
+                continue
+            if self.filter_mode == "document" and item.kind != "document":
+                continue
+            if self.filter_mode == "archive" and item.kind != "archive":
+                continue
+            if self.filter_mode == "audio" and item.kind != "audio":
+                continue
+            if self.filter_mode == "file" and item.kind != "file":
                 continue
             if self.filter_mode == "duplicate" and not item.duplicate_of:
                 continue
@@ -753,15 +776,23 @@ class MainWindow(QMainWindow):
             self.mode_label.setText("未连接")
 
         counts = {
-            "all": len(report.media_items),
+            "all": len(report.library_items),
             "image": len(report.images),
             "video": len(report.videos),
+            "document": len(report.documents),
+            "archive": len(report.archives),
+            "audio": len(report.audio_files),
+            "file": len(report.other_files),
             "duplicate": len(report.duplicates),
         }
         labels = {
             "all": "全部媒体",
             "image": "图片",
             "video": "视频",
+            "document": "文档",
+            "archive": "压缩包",
+            "audio": "音频",
+            "file": "其他文件",
             "duplicate": "重复文件",
         }
         for mode, button in self.nav_buttons.items():
@@ -769,7 +800,8 @@ class MainWindow(QMainWindow):
 
         self.image_stat.set_value(f"{len(report.images):,} 项")
         self.video_stat.set_value(f"{len(report.videos):,} 项")
-        self.size_stat.set_value(format_size(report.media_bytes))
+        self.file_stat.set_value(f"{len(report.file_items):,} 项")
+        self.size_stat.set_value(format_size(report.library_bytes))
         self.duplicate_stat.set_value(f"{len(report.duplicates):,} 项")
         self.last_scan_label.setText(
             report.scanned_at.astimezone().strftime("%m-%d %H:%M") if report.items else "尚未扫描"
@@ -862,7 +894,7 @@ class MainWindow(QMainWindow):
                         card.set_preview(cached)
         self.scroll_layout.addStretch(1)
 
-        if not self.report.items:
+        if not self.report.library_items:
             self._set_status("未发现媒体。请连接手机、开启 USB 调试后重新扫描。")
         elif self.report.warning:
             self._set_status(self.report.warning)
@@ -963,7 +995,9 @@ class MainWindow(QMainWindow):
         if report.items:
             self._set_status(
                 f"扫描完成：发现 {len(report.media_items):,} 个图片/视频，"
-                f"{len(report.unknown):,} 个文件待识别，用时 {report.elapsed_seconds:.1f} 秒。"
+                f"{len(report.file_items):,} 个文件，"
+                f"{len(report.unknown):,} 个内部/未知文件未展示，"
+                f"用时 {report.elapsed_seconds:.1f} 秒。"
             )
             QTimer.singleShot(150, self._start_preview_loading)
         else:
@@ -1022,7 +1056,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "演示数据",
-                "当前是界面演示数据。连接手机并完成扫描后，可单击文件查看图片或视频。",
+                "当前是界面演示数据。连接手机并完成扫描后，可单击文件查看或打开。",
             )
             return
         if self._open_worker and self._open_worker.isRunning():
@@ -1088,7 +1122,7 @@ class MainWindow(QMainWindow):
             return
         selected = [item for item in self.report.items if item.selected]
         if not selected:
-            QMessageBox.information(self, "未选择文件", "请先勾选需要导出的图片或视频。")
+            QMessageBox.information(self, "未选择文件", "请先勾选需要导出的内容。")
             return
         if self.demo:
             self._set_status("当前是演示数据，连接真实手机后可执行导出。")
@@ -1215,9 +1249,9 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于微信媒体整理",
-            "微信媒体整理 0.2.1\n\n"
+            "微信媒体整理 0.3.0\n\n"
             "本地运行，不上传媒体。\n"
-            "通过 ADB 读取用户可访问的微信图片和视频。",
+            "通过 ADB 读取用户可访问的微信图片、视频和文件。",
         )
 
     def show_cleanup_dialog(self) -> None:

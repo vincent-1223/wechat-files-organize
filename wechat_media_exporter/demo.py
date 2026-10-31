@@ -129,6 +129,36 @@ def demo_report() -> ScanReport:
             False,
             None,
         ),
+        (
+            "2026年10月报销单.pdf",
+            "document",
+            1.8,
+            datetime(2026, 10, 15, 9, 30, 12).astimezone(),
+            "/sdcard/Android/data/com.tencent.mm/MicroMsg/Download/2026年10月报销单.pdf",
+            "/sdcard/Android/data/com.tencent.mm",
+            False,
+            None,
+        ),
+        (
+            "设计资料包.zip",
+            "archive",
+            12.4,
+            datetime(2026, 10, 10, 16, 45, 0).astimezone(),
+            "/sdcard/Android/data/com.tencent.mm/MicroMsg/Download/设计资料包.zip",
+            "/sdcard/Android/data/com.tencent.mm",
+            False,
+            None,
+        ),
+        (
+            "voice_20261005.mp3",
+            "audio",
+            1.1,
+            datetime(2026, 10, 5, 20, 18, 40).astimezone(),
+            "/sdcard/Android/data/com.tencent.mm/MicroMsg/Download/voice_20261005.mp3",
+            "/sdcard/Android/data/com.tencent.mm",
+            False,
+            22,
+        ),
     )
 
     items: list[MediaItem] = []

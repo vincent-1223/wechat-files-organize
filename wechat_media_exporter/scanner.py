@@ -19,6 +19,10 @@ scan_paths = (
     "/sdcard/Pictures/WeChat",
     "/sdcard/DCIM/WeChat",
     "/sdcard/DCIM/Weixin",
+    "/sdcard/Documents/WeChat",
+    "/sdcard/Documents/Weixin",
+    "/sdcard/Download/WeChat",
+    "/sdcard/Download/Weixin",
     "/sdcard/tencent/MicroMsg",
     "/sdcard/Android/media/com.tencent.mm",
     "/sdcard/Android/data/com.tencent.mm",
@@ -160,7 +164,7 @@ def scan_android(
         source.path.startswith("/data/") and source.state == "denied" for source in report.sources
     ):
         report.warning = (
-            "微信私有应用目录无法通过普通 ADB 读取；聊天记录中的全部图片和视频"
+            "微信私有应用目录无法通过普通 ADB 读取；聊天记录中的全部图片、视频和文件"
             "不在当前扫描能力范围内。"
         )
     report.elapsed_seconds = round(time.perf_counter() - started, 2)

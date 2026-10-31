@@ -42,6 +42,10 @@ def media(remote_path: str, modified_at: datetime, selected: bool = True) -> Med
 def test_media_type_and_thumbnail_rules() -> None:
     assert classify_media_path("/a/photo.JPG") == ("image", ".jpg")
     assert classify_media_path("/a/video.MP4") == ("video", ".mp4")
+    assert classify_media_path("/a/report.PDF") == ("document", ".pdf")
+    assert classify_media_path("/a/archive.ZIP") == ("archive", ".zip")
+    assert classify_media_path("/a/voice.M4A") == ("audio", ".m4a")
+    assert classify_media_path("/xlog/cache.txt") == ("other", ".txt")
     assert classify_media_path("/a/cache_123") == ("other", "")
     assert classify_media_path("/a/textstatus/thumb_123") == ("image", "")
     assert looks_like_thumbnail("/sdcard/cache/th_123")
@@ -57,6 +61,12 @@ def test_detect_media_kind_from_file_header(tmp_path: Path) -> None:
     mp4 = tmp_path / "cache-file"
     mp4.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\x00" * 8)
     assert detect_media_kind(mp4) == "video"
+    pdf = tmp_path / "document-without-extension"
+    pdf.write_bytes(b"%PDF-1.7" + b"\x00" * 8)
+    assert detect_media_kind(pdf) == "document"
+    archive = tmp_path / "archive-without-extension"
+    archive.write_bytes(b"PK\x03\x04" + b"\x00" * 12)
+    assert detect_media_kind(archive) == "archive"
 
 
 def test_parse_stat_line() -> None:
@@ -104,10 +114,32 @@ def test_export_groups_by_month_and_skips_exact_duplicates(tmp_path: Path) -> No
         "/sdcard/Pictures/Weixin/c.mp4",
         datetime(2026, 9, 1, 12, 0).astimezone(),
     )
+    document = MediaItem(
+        remote_path="/sdcard/Android/data/com.tencent.mm/MicroMsg/Download/report.pdf",
+        name="report.pdf",
+        kind="document",
+        size_bytes=7,
+        modified_at=datetime(2026, 10, 8, 12, 0).astimezone(),
+        source_root="/sdcard/Android/data/com.tencent.mm",
+        extension=".pdf",
+        selected=True,
+    )
+    archive = MediaItem(
+        remote_path="/sdcard/Android/data/com.tencent.mm/MicroMsg/Download/files.zip",
+        name="files.zip",
+        kind="archive",
+        size_bytes=9,
+        modified_at=datetime(2026, 10, 9, 12, 0).astimezone(),
+        source_root="/sdcard/Android/data/com.tencent.mm",
+        extension=".zip",
+        selected=True,
+    )
     payloads = {
         first.remote_path: b"same-content",
         second.remote_path: b"same-content",
         video.remote_path: b"video-content",
+        document.remote_path: b"%PDF-content",
+        archive.remote_path: b"PK-archive",
     }
     destination = tmp_path / "WeChatBackup"
 
@@ -115,17 +147,25 @@ def test_export_groups_by_month_and_skips_exact_duplicates(tmp_path: Path) -> No
         result = export_android_media(
             FakeAdb(payloads),  # type: ignore[arg-type]
             "SERIAL",
-            [first, second, video],
+            [first, second, video, document, archive],
             destination,
             index,
         )
 
-    assert len(result.exported) == 2
+    assert len(result.exported) == 4
     assert len(result.duplicates) == 1
     assert (destination / "2026" / "10" / "Images" / "a.jpg").is_file()
     assert (destination / "2026" / "09" / "Videos" / "c.mp4").is_file()
+    assert (destination / "2026" / "10" / "Documents" / "report.pdf").is_file()
+    assert (destination / "2026" / "10" / "Archives" / "files.zip").is_file()
     assert list((destination / "Reports").glob("export-*.json"))
     with HashIndex(tmp_path / "index.sqlite3") as index:
         verified = index.list_verified_exports("SERIAL")
-        assert len(verified) == 3
-        assert {Path(record.remote_path).name for record in verified} == {"a.jpg", "b.jpg", "c.mp4"}
+        assert len(verified) == 5
+        assert {Path(record.remote_path).name for record in verified} == {
+            "a.jpg",
+            "b.jpg",
+            "c.mp4",
+            "report.pdf",
+            "files.zip",
+        }

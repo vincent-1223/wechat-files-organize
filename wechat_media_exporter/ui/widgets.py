@@ -170,6 +170,14 @@ def build_thumbnail(
             first, second, third = (
                 ("#18363D", "#2C6671", "#C4895B") if seed % 2 else ("#35445D", "#83677B", "#D5966D")
             )
+        elif item.kind == "document":
+            first, second, third = "#E6E8E2", "#CBD3CE", "#72867B"
+        elif item.kind == "archive":
+            first, second, third = "#806B36", "#C8AA61", "#5F512D"
+        elif item.kind == "audio":
+            first, second, third = "#5B4A73", "#9878A8", "#423B58"
+        elif item.kind == "file":
+            first, second, third = "#66716C", "#9BA6A0", "#414C47"
         gradient = QLinearGradient(canvas.topLeft(), canvas.bottomRight())
         gradient.setColorAt(0, QColor(first))
         gradient.setColorAt(0.62, QColor(second))
@@ -230,7 +238,7 @@ def build_thumbnail(
             check_rect.top() + 5,
         )
 
-    if item.kind == "video":
+    if item.kind in {"video", "audio"}:
         center = canvas.center()
         painter.setPen(QPen(QColor(255, 255, 255, 180), 1))
         painter.setBrush(QColor(10, 16, 13, 115))

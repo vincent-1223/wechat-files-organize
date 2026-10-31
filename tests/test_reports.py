@@ -12,6 +12,7 @@ def test_scan_reports_are_written(tmp_path: Path) -> None:
 
     assert payload["summary"]["images"] == 6
     assert payload["summary"]["videos"] == 3
+    assert payload["summary"]["files"] == 3
     assert payload["device"]["model"] == "Xiaomi 14"
     assert "微信媒体扫描报告" in markdown_path.read_text(encoding="utf-8")
     assert "Android/data" in markdown_path.read_text(encoding="utf-8")

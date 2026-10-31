@@ -1,6 +1,6 @@
 # WeChat Files Organize
 
-Windows 桌面工具，通过 USB 和 ADB 读取 Android 手机中可访问的微信图片与视频，按月份整理、按内容去重并安全导出。
+Windows 桌面工具，通过 USB 和 ADB 读取 Android 手机中可访问的微信图片、视频和文件，按月份整理、按内容去重并安全导出。
 
 ![桌面界面预览](docs/screenshot-main.png)
 
@@ -11,12 +11,12 @@ Windows 桌面工具，通过 USB 和 ADB 读取 Android 手机中可访问的�
 - Windows / PySide6 桌面界面
 - ADB 设备识别与 Android / 微信版本读取
 - 微信候选媒体目录探测
-- 图片和视频浅层分类
+- 图片、视频、文档、压缩包、音频和普通文件分类
 - 真实图片缩略图和视频首帧预览，单击即可查看或播放
 - 按月份分组浏览、搜索、筛选和多选
 - 后台扫描与真实进度
 - SHA-256 内容去重
-- 按 `年/月/图片|视频` 导出
+- 按 `年/月/Images|Videos|Documents|Archives|Audio|Files` 导出
 - 扫描能力报告
 - 始终可见的安全清理入口，只清理已导出并通过 SHA-256 校验的手动勾选文件
 
@@ -27,8 +27,8 @@ Windows 桌面工具，通过 USB 和 ADB 读取 Android 手机中可访问的�
 
 从 GitHub Releases 下载：
 
-- `WeChat-Files-Organize-Setup-0.2.1.exe`：按当前用户安装，无需管理员权限。
-- `WeChat-Files-Organize-Portable-0.2.1.exe`：免安装，双击启动。
+- `WeChat-Files-Organize-Setup-0.3.0.exe`：按当前用户安装，无需管理员权限。
+- `WeChat-Files-Organize-Portable-0.3.0.exe`：免安装，双击启动。
 
 发布包内置 ADB，用户不需要单独安装 Android Platform Tools。当前版本未做商业代码签名，
 Windows SmartScreen 可能显示“未知发布者”。

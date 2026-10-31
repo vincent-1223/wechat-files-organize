@@ -14,7 +14,7 @@ from wechat_media_exporter.ui.theme import APP_STYLESHEET
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="微信图片视频整理工具")
+    parser = argparse.ArgumentParser(description="微信媒体与文件整理工具")
     parser.add_argument(
         "--demo",
         action="store_true",
@@ -34,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("微信媒体整理")
     app.setApplicationDisplayName("微信媒体整理")
     app.setOrganizationName("WeChatFilesOrganize")
-    app.setApplicationVersion("0.2.1")
+    app.setApplicationVersion("0.3.0")
     project_root = Path(__file__).resolve().parent.parent
     app.setWindowIcon(
         QIcon(str(project_root / "wechat_media_exporter" / "assets" / "app-icon.svg"))

@@ -70,11 +70,15 @@ def export_android_media(
                     temp_file.unlink(missing_ok=True)
                 else:
                     detected_kind = detect_media_kind(temp_file)
-                    if detected_kind != "other":
+                    if item.kind in {"other", "image", "video"} and detected_kind != "other":
                         item.kind = detected_kind
                     folder_name = {
                         "image": "Images",
                         "video": "Videos",
+                        "document": "Documents",
+                        "archive": "Archives",
+                        "audio": "Audio",
+                        "file": "Files",
                         "other": "Other",
                     }[item.kind]
                     target_directory = (

@@ -217,6 +217,8 @@ class AdbClient:
         parents = (
             "/sdcard/Pictures",
             "/sdcard/DCIM",
+            "/sdcard/Documents",
+            "/sdcard/Download",
             "/sdcard/tencent",
             "/sdcard/Android/media",
         )

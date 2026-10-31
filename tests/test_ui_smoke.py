@@ -15,10 +15,12 @@ def test_demo_window_filters_media() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow(demo=True)
     assert window.report.device is not None
-    assert len(window.report.items) == 9
-    assert window.nav_buttons["all"].text().endswith("9")
+    assert len(window.report.items) == 12
+    assert window.nav_buttons["all"].text().endswith("12")
     assert "安全清理" in window.cleanup_nav_button.text()
     assert window.cleanup_button.isEnabled()
+    assert "document" in window.nav_buttons
+    assert window.file_stat.value_label.text() == "3 项"
 
     window.set_filter("video")
     app.processEvents()

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-MediaKind = Literal["image", "video", "other"]
+MediaKind = Literal["image", "video", "document", "archive", "audio", "file", "other"]
 SourceState = Literal["readable", "partial", "empty", "missing", "denied", "error"]
 
 
@@ -67,7 +67,15 @@ class MediaItem:
 
     @property
     def kind_label(self) -> str:
-        return {"image": "图片", "video": "视频", "other": "待识别"}[self.kind]
+        return {
+            "image": "图片",
+            "video": "视频",
+            "document": "文档",
+            "archive": "压缩包",
+            "audio": "音频",
+            "file": "文件",
+            "other": "待识别",
+        }[self.kind]
 
     @property
     def size_label(self) -> str:
@@ -109,6 +117,32 @@ class ScanReport:
         return [item for item in self.items if item.kind in {"image", "video"}]
 
     @property
+    def documents(self) -> list[MediaItem]:
+        return [item for item in self.items if item.kind == "document"]
+
+    @property
+    def archives(self) -> list[MediaItem]:
+        return [item for item in self.items if item.kind == "archive"]
+
+    @property
+    def audio_files(self) -> list[MediaItem]:
+        return [item for item in self.items if item.kind == "audio"]
+
+    @property
+    def other_files(self) -> list[MediaItem]:
+        return [item for item in self.items if item.kind == "file"]
+
+    @property
+    def file_items(self) -> list[MediaItem]:
+        return [
+            item for item in self.items if item.kind in {"document", "archive", "audio", "file"}
+        ]
+
+    @property
+    def library_items(self) -> list[MediaItem]:
+        return [item for item in self.items if item.kind != "other"]
+
+    @property
     def thumbnails(self) -> list[MediaItem]:
         return [item for item in self.items if item.is_thumbnail]
 
@@ -125,12 +159,20 @@ class ScanReport:
         return sum(item.size_bytes for item in self.media_items)
 
     @property
+    def file_bytes(self) -> int:
+        return sum(item.size_bytes for item in self.file_items)
+
+    @property
+    def library_bytes(self) -> int:
+        return sum(item.size_bytes for item in self.library_items)
+
+    @property
     def readable_sources(self) -> int:
         return sum(source.state in {"readable", "partial", "empty"} for source in self.sources)
 
     def months(self) -> list[tuple[str, str, list[MediaItem]]]:
         grouped: dict[str, list[MediaItem]] = {}
-        for item in self.media_items:
+        for item in self.library_items:
             grouped.setdefault(item.month_key, []).append(item)
 
         result: list[tuple[str, str, list[MediaItem]]] = []
