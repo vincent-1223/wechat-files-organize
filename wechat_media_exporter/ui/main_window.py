@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QSize, QStandardPaths, Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QIcon
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from wechat_media_exporter.adb import AdbClient, find_adb
+from wechat_media_exporter.database import HashIndex, VerifiedExport
 from wechat_media_exporter.demo import demo_report
 from wechat_media_exporter.models import (
     ExportProgress,
@@ -35,6 +37,7 @@ from wechat_media_exporter.models import (
     MediaItem,
     ScanReport,
 )
+from wechat_media_exporter.preview import MediaPreviewCache
 from wechat_media_exporter.reports import write_scan_reports
 from wechat_media_exporter.ui.widgets import (
     EmptyState,
@@ -43,7 +46,13 @@ from wechat_media_exporter.ui.widgets import (
     clear_layout,
     format_size,
 )
-from wechat_media_exporter.workers import ExportWorker, ScanWorker
+from wechat_media_exporter.workers import (
+    CleanupWorker,
+    ExportWorker,
+    OpenMediaWorker,
+    ScanWorker,
+    ThumbnailWorker,
+)
 
 
 class CapabilityDialog(QDialog):
@@ -120,6 +129,141 @@ class CapabilityDialog(QDialog):
         layout.addLayout(footer)
 
 
+class ImagePreviewDialog(QDialog):
+    def __init__(self, title: str, image_path: Path, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.image_path = image_path
+        self.setWindowTitle(title)
+        self.resize(980, 720)
+        self.setMinimumSize(640, 480)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        heading = QLabel(title, self)
+        heading.setObjectName("SectionTitle")
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+
+        image_label = QLabel(self)
+        image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        image_label.setMinimumSize(500, 360)
+        pixmap = QPixmap(str(image_path))
+        if not pixmap.isNull():
+            image_label.setPixmap(
+                pixmap.scaled(
+                    QSize(900, 610),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        else:
+            image_label.setText("图片无法预览，可使用系统应用打开。")
+        layout.addWidget(image_label, 1)
+
+        footer = QHBoxLayout()
+        path_label = QLabel(str(image_path), self)
+        path_label.setObjectName("Meta")
+        path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        footer.addWidget(path_label, 1)
+        external = QPushButton("用系统应用打开", self)
+        external.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.image_path)))
+        )
+        footer.addWidget(external)
+        close_button = QPushButton("关闭", self)
+        close_button.setObjectName("PrimaryButton")
+        close_button.clicked.connect(self.accept)
+        footer.addWidget(close_button)
+        layout.addLayout(footer)
+
+
+class CleanupDialog(QDialog):
+    def __init__(self, records: list[VerifiedExport], parent: QWidget | None = None):
+        super().__init__(parent)
+        self.records = records
+        self.selected_records: list[VerifiedExport] = []
+        self.setWindowTitle("安全清理已备份文件")
+        self.resize(860, 520)
+        self.setMinimumSize(680, 400)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        title = QLabel("安全清理已备份文件", self)
+        title.setStyleSheet("font-size: 17px; font-weight: 600;")
+        layout.addWidget(title)
+        warning = QLabel(
+            "只有在本地备份存在且 SHA-256 校验一致时，勾选的文件才允许删除。"
+            "软件不会自动清理，也不会处理聊天数据库、配置或未知缓存。",
+            self,
+        )
+        warning.setWordWrap(True)
+        warning.setObjectName("Muted")
+        layout.addWidget(warning)
+
+        self.tree = QTreeWidget(self)
+        self.tree.setColumnCount(3)
+        self.tree.setHeaderLabels(["手机文件", "大小", "本地备份"])
+        self.tree.setRootIsDecorated(False)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setColumnWidth(0, 360)
+        self.tree.setColumnWidth(1, 90)
+        for record in records:
+            local_exists = Path(record.local_path).is_file()
+            item = QTreeWidgetItem(
+                [
+                    record.remote_path,
+                    format_size(record.size_bytes),
+                    record.local_path if local_exists else "本地备份缺失（不可清理）",
+                ]
+            )
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Unchecked)
+            if not local_exists:
+                item.setDisabled(True)
+                item.setForeground(2, Qt.GlobalColor.darkRed)
+            item.setData(0, Qt.ItemDataRole.UserRole, record.remote_path)
+            self.tree.addTopLevelItem(item)
+        layout.addWidget(self.tree, 1)
+
+        footer = QHBoxLayout()
+        select_all = QPushButton("选中可清理项", self)
+        select_all.clicked.connect(self._select_all)
+        footer.addWidget(select_all)
+        footer.addStretch(1)
+        cancel = QPushButton("取消", self)
+        cancel.clicked.connect(self.reject)
+        footer.addWidget(cancel)
+        confirm = QPushButton("继续清理", self)
+        confirm.setObjectName("PrimaryButton")
+        confirm.clicked.connect(self._confirm)
+        footer.addWidget(confirm)
+        layout.addLayout(footer)
+
+    def _select_all(self) -> None:
+        for index in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(index)
+            if not item.isDisabled():
+                item.setCheckState(0, Qt.CheckState.Checked)
+
+    def _confirm(self) -> None:
+        selected_paths = {
+            item.data(0, Qt.ItemDataRole.UserRole)
+            for index in range(self.tree.topLevelItemCount())
+            if (item := self.tree.topLevelItem(index)).checkState(0) == Qt.CheckState.Checked
+        }
+        self.selected_records = [
+            record for record in self.records if record.remote_path in selected_paths
+        ]
+        if not self.selected_records:
+            QMessageBox.information(self, "未选择文件", "请先勾选需要清理的已备份文件。")
+            return
+        self.accept()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, *, demo: bool = False):
         super().__init__()
@@ -132,6 +276,11 @@ class MainWindow(QMainWindow):
         self.sort_mode = "date"
         self._scan_worker: ScanWorker | None = None
         self._export_worker: ExportWorker | None = None
+        self._preview_worker: ThumbnailWorker | None = None
+        self._open_worker: OpenMediaWorker | None = None
+        self._cleanup_worker: CleanupWorker | None = None
+        self._preview_cache: MediaPreviewCache | None = None
+        self._opening_item: MediaItem | None = None
         self._card_by_path = {}
         self._month_sections: dict[str, MonthSection] = {}
         self._verified_export_count = 0
@@ -311,6 +460,15 @@ class MainWindow(QMainWindow):
         scan_layout.addWidget(self.last_scan_label.parentWidget())
         scan_layout.addWidget(self.mode_label.parentWidget())
         layout.addWidget(scan_panel)
+
+        self.cleanup_nav_button = QPushButton("安全清理", sidebar)
+        self.cleanup_nav_button.setObjectName("SoftButton")
+        self.cleanup_nav_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon)
+        )
+        self.cleanup_nav_button.setToolTip("查看已备份并通过校验的手机媒体")
+        self.cleanup_nav_button.clicked.connect(self.show_cleanup_dialog)
+        layout.addWidget(self.cleanup_nav_button)
         layout.addStretch(1)
 
         storage_row = QHBoxLayout()
@@ -345,7 +503,7 @@ class MainWindow(QMainWindow):
         title = QLabel("媒体库", center)
         title.setObjectName("PageTitle")
         self.page_subtitle = QLabel(
-            "按类型分开浏览，按月份自动归档，内容相同的文件只保留一份。", center
+            "按类型和月份归档；单击卡片查看或播放，右上角勾选导出。", center
         )
         self.page_subtitle.setObjectName("PageSubtitle")
         title_column.addWidget(title)
@@ -491,9 +649,8 @@ class MainWindow(QMainWindow):
         authorization.addWidget(manual, 0, Qt.AlignmentFlag.AlignRight)
         safety_layout.addLayout(authorization)
 
-        self.cleanup_button = QPushButton("完成备份校验后手动选择文件", safety)
-        self.cleanup_button.setEnabled(False)
-        self.cleanup_button.clicked.connect(self.manual_cleanup)
+        self.cleanup_button = QPushButton("查看已备份文件", safety)
+        self.cleanup_button.clicked.connect(self.show_cleanup_dialog)
         safety_layout.addWidget(self.cleanup_button)
         no_delete = QLabel("软件不会自动删除任何手机文件", safety)
         no_delete.setObjectName("Meta")
@@ -638,6 +795,7 @@ class MainWindow(QMainWindow):
         self._refresh_month_strip()
         self._refresh_media_view()
         self._refresh_selection()
+        self._refresh_cleanup_button()
 
     def _refresh_month_strip(self) -> None:
         clear_layout(self.month_strip_layout)
@@ -687,6 +845,7 @@ class MainWindow(QMainWindow):
             items = grouped[month_key]
             section = MonthSection(month_key, items[0].month_label, items, self.scroll_content)
             section.selection_changed.connect(self._on_card_selection)
+            section.open_requested.connect(self.open_media)
             section.select_month_requested.connect(
                 lambda target: target.set_all_selected(
                     any(not card.selected for card in target.cards)
@@ -696,6 +855,10 @@ class MainWindow(QMainWindow):
             self._month_sections[month_key] = section
             for card in section.cards:
                 self._card_by_path[card.item.remote_path] = card
+                if self._preview_cache:
+                    cached = self._preview_cache.thumbnail_path(card.item)
+                    if cached.is_file():
+                        card.set_preview(cached)
         self.scroll_layout.addStretch(1)
 
         if not self.report.items:
@@ -722,7 +885,6 @@ class MainWindow(QMainWindow):
         size = sum(item.size_bytes for item in selected)
         self.selection_label.setText(f"已选 {len(selected)} 项")
         self.export_button.setEnabled(bool(selected) and not self.demo)
-        self.cleanup_button.setEnabled(False)
         first_month = self.report.months()
         if first_month:
             _, label, items = first_month[0]
@@ -735,6 +897,15 @@ class MainWindow(QMainWindow):
             self.export_button.setEnabled(True)
         if selected:
             self._set_status(f"已选择 {len(selected)} 项，共 {format_size(size)}。")
+
+    def _refresh_cleanup_button(self) -> None:
+        count = 0
+        if self.report.device:
+            database_path = self.data_directory / "content-index.sqlite3"
+            with HashIndex(database_path) as index:
+                count = len(index.list_verified_exports(self.report.device.serial))
+        self.cleanup_nav_button.setText(f"安全清理 ({count})" if count else "安全清理")
+        self.cleanup_button.setText(f"查看已备份文件 ({count})" if count else "查看已备份文件")
 
     def select_all_visible(self) -> None:
         for card in self._card_by_path.values():
@@ -755,6 +926,8 @@ class MainWindow(QMainWindow):
             self._set_status("已重新载入演示数据。")
             return
 
+        if self._preview_worker and self._preview_worker.isRunning():
+            self._preview_worker.cancel()
         self._scan_running = True
         self.scan_action.setEnabled(False)
         self.scan_button.setEnabled(False)
@@ -791,8 +964,95 @@ class MainWindow(QMainWindow):
                 f"扫描完成：发现 {len(report.media_items):,} 个图片/视频，"
                 f"{len(report.unknown):,} 个文件待识别，用时 {report.elapsed_seconds:.1f} 秒。"
             )
+            QTimer.singleShot(150, self._start_preview_loading)
         else:
             self._set_status("扫描完成，但当前目录范围内未发现可访问媒体。")
+
+    def _start_preview_loading(self) -> None:
+        if self.demo or not self.report.device:
+            return
+        adb_path = find_adb(self.project_root)
+        if adb_path is None:
+            self._set_status("无法加载缩略图：未找到 ADB。")
+            return
+        if self._preview_worker and self._preview_worker.isRunning():
+            self._preview_worker.cancel()
+            self._preview_worker.wait(2000)
+
+        self._preview_cache = MediaPreviewCache(
+            self.data_directory / "preview-cache",
+            AdbClient(adb_path),
+            self.report.device.serial,
+        )
+        for card in self._card_by_path.values():
+            cached = self._preview_cache.thumbnail_path(card.item)
+            if cached.is_file():
+                card.set_preview(cached)
+        pending = [
+            item
+            for item in self.report.media_items
+            if not self._preview_cache.thumbnail_path(item).is_file()
+        ]
+        if not pending:
+            self._set_status("缩略图已加载完成。")
+            return
+        self._preview_worker = ThumbnailWorker(self._preview_cache, pending, self)
+        self._preview_worker.preview_ready.connect(self._on_thumbnail_ready)
+        self._preview_worker.progress.connect(self._on_thumbnail_progress)
+        self._preview_worker.note.connect(self._set_status)
+        self._preview_worker.start()
+        self.task_title.setText("正在加载媒体缩略图")
+        self.task_detail.setText("缩略图在本地缓存，下次扫描会直接复用。")
+
+    def _on_thumbnail_ready(self, remote_path: str, preview_path: str) -> None:
+        card = self._card_by_path.get(remote_path)
+        if card:
+            card.set_preview(Path(preview_path))
+
+    def _on_thumbnail_progress(self, completed: int, total: int, name: str) -> None:
+        self.task_detail.setText(f"正在加载缩略图 {completed} / {total} · {name}")
+        if completed >= total:
+            self.task_title.setText("缩略图加载完成")
+
+    def open_media(self, item: object) -> None:
+        if not isinstance(item, MediaItem):
+            return
+        if self.demo:
+            QMessageBox.information(
+                self,
+                "演示数据",
+                "当前是界面演示数据。连接手机并完成扫描后，可单击文件查看图片或视频。",
+            )
+            return
+        if self._open_worker and self._open_worker.isRunning():
+            self._set_status("正在准备上一个媒体文件，请稍候。")
+            return
+        if not self.report.device or not self._preview_cache:
+            self._set_status("媒体预览服务尚未就绪，请重新扫描。")
+            return
+
+        self._opening_item = item
+        self._open_worker = OpenMediaWorker(self._preview_cache, item, self)
+        self._open_worker.succeeded.connect(self._on_media_opened)
+        self._open_worker.failed.connect(self._on_media_open_failed)
+        self._open_worker.start()
+        self.task_title.setText("正在读取媒体")
+        self.task_detail.setText(f"从手机读取：{item.name}")
+
+    def _on_media_opened(self, remote_path: str, local_path: str) -> None:
+        item = self._opening_item
+        if not item or item.remote_path != remote_path:
+            return
+        path = Path(local_path)
+        if item.kind == "image":
+            ImagePreviewDialog(item.name, path, self).exec()
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+            self._set_status(f"已用系统播放器打开：{item.name}")
+
+    def _on_media_open_failed(self, message: str) -> None:
+        self._set_status(message)
+        QMessageBox.warning(self, "无法打开媒体", message)
 
     def _on_scan_failed(self, message: str) -> None:
         self._set_status(message)
@@ -836,6 +1096,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "设备不可用", "请先连接 Android 手机并完成扫描。")
             return
 
+        if self._preview_worker and self._preview_worker.isRunning():
+            self._preview_worker.cancel()
         destination = self.choose_export_directory(show_message=False)
         if destination is None:
             return
@@ -881,6 +1143,7 @@ class MainWindow(QMainWindow):
             return
         completed = len(result.exported) + len(result.duplicates)
         self._verified_export_count += len(result.exported)
+        self._refresh_cleanup_button()
         self.progress_bar.setValue(100)
         self.progress_text.setText("100%")
         self.task_title.setText("导出完成")
@@ -910,6 +1173,9 @@ class MainWindow(QMainWindow):
         if self._export_worker and self._export_running:
             self._export_worker.cancel()
             self._set_status("将在当前文件传输完成后取消导出…")
+        if self._preview_worker and self._preview_worker.isRunning():
+            self._preview_worker.cancel()
+            self._set_status("正在停止缩略图加载…")
 
     def choose_export_directory(self, *, show_message: bool = True) -> Path | None:
         selected = QFileDialog.getExistingDirectory(
@@ -948,18 +1214,79 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于微信媒体整理",
-            "微信媒体整理 0.1.0\n\n"
+            "微信媒体整理 0.2.0\n\n"
             "本地运行，不上传媒体。\n"
             "通过 ADB 读取用户可访问的微信图片和视频。",
         )
 
-    def manual_cleanup(self) -> None:
+    def show_cleanup_dialog(self) -> None:
+        if not self.report.device:
+            QMessageBox.information(
+                self,
+                "没有可清理文件",
+                "请先连接手机、扫描并导出媒体。只有完成本地备份和 SHA-256 校验的文件"
+                "才会出现在清理列表中。",
+            )
+            return
+
+        database_path = self.data_directory / "content-index.sqlite3"
+        with HashIndex(database_path) as index:
+            records = index.list_verified_exports(self.report.device.serial)
+        if not records:
+            QMessageBox.information(
+                self,
+                "没有可清理文件",
+                "当前设备还没有通过备份校验的文件。请先导出媒体，确认本地备份完整后再清理。",
+            )
+            return
+
+        dialog = CleanupDialog(records, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_records:
+            return
+        count = len(dialog.selected_records)
+        answer = QMessageBox.question(
+            self,
+            "确认删除手机文件",
+            f"将从手机删除你手动勾选的 {count} 个文件。\n\n"
+            "删除前会再次校验本地文件 SHA-256。此操作不可撤销，是否继续？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._cleanup_paths = {record.remote_path for record in dialog.selected_records}
+        self._cleanup_worker = CleanupWorker(
+            self.project_root,
+            self.report.device.serial,
+            dialog.selected_records,
+            database_path,
+            self,
+        )
+        self._cleanup_worker.succeeded.connect(self._on_cleanup_complete)
+        self._cleanup_worker.failed.connect(self._on_cleanup_failed)
+        self._cleanup_worker.start()
+        self.task_title.setText("正在安全清理")
+        self.task_detail.setText("正在复核本地备份并删除已确认的手机文件…")
+
+    def _on_cleanup_complete(self, count: int) -> None:
+        removed_paths = getattr(self, "_cleanup_paths", set())
+        self.report.items = [
+            item for item in self.report.items if item.remote_path not in removed_paths
+        ]
+        self._refresh_all()
+        self._refresh_cleanup_button()
+        self._set_status(f"已清理 {count} 个已校验的手机文件。")
+        self.task_title.setText("安全清理完成")
         QMessageBox.information(
             self,
-            "安全清理尚未开放",
-            "清理功能仍在安全验证阶段。只有完成导出、大小校验和 SHA-256 校验后，"
-            "用户才能手动选择待清理文件，软件不会自动删除。",
+            "清理完成",
+            f"已从手机删除 {count} 个文件。本地导出文件仍然保留。",
         )
+
+    def _on_cleanup_failed(self, message: str) -> None:
+        self._set_status(message)
+        QMessageBox.critical(self, "清理已中止", message)
 
     def _set_status(self, message: str) -> None:
         self.task_detail.setText(message)
@@ -996,4 +1323,11 @@ class MainWindow(QMainWindow):
         if self._export_worker and self._export_worker.isRunning():
             self._export_worker.cancel()
             self._export_worker.wait(3000)
+        if self._preview_worker and self._preview_worker.isRunning():
+            self._preview_worker.cancel()
+            self._preview_worker.wait(2000)
+        if self._open_worker and self._open_worker.isRunning():
+            self._open_worker.wait(3000)
+        if self._cleanup_worker and self._cleanup_worker.isRunning():
+            self._cleanup_worker.wait(5000)
         super().closeEvent(event)

@@ -34,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("微信媒体整理")
     app.setApplicationDisplayName("微信媒体整理")
     app.setOrganizationName("WeChatFilesOrganize")
-    app.setApplicationVersion("0.1.0")
+    app.setApplicationVersion("0.2.0")
     project_root = Path(__file__).resolve().parent.parent
     app.setWindowIcon(
         QIcon(str(project_root / "wechat_media_exporter" / "assets" / "app-icon.svg"))

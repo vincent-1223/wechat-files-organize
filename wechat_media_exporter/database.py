@@ -14,6 +14,16 @@ class HashRecord:
     first_seen_at: str
 
 
+@dataclass(slots=True, frozen=True)
+class VerifiedExport:
+    remote_path: str
+    serial: str
+    checksum: str
+    local_path: str
+    size_bytes: int
+    exported_at: str
+
+
 class HashIndex:
     """Persistent exact-content index used to avoid duplicate exports."""
 
@@ -28,6 +38,18 @@ class HashIndex:
                 size_bytes INTEGER NOT NULL,
                 first_path TEXT NOT NULL,
                 first_seen_at TEXT NOT NULL
+            )
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS verified_exports (
+                remote_path TEXT PRIMARY KEY,
+                serial TEXT NOT NULL,
+                checksum TEXT NOT NULL,
+                local_path TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                exported_at TEXT NOT NULL
             )
             """
         )
@@ -57,6 +79,63 @@ class HashIndex:
                 str(first_path),
                 datetime.now(UTC).isoformat(),
             ),
+        )
+        self._connection.commit()
+
+    def record_verified_export(
+        self,
+        *,
+        remote_path: str,
+        serial: str,
+        checksum: str,
+        local_path: Path,
+        size_bytes: int,
+    ) -> None:
+        self._connection.execute(
+            """
+            INSERT OR REPLACE INTO verified_exports
+                (remote_path, serial, checksum, local_path, size_bytes, exported_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                remote_path,
+                serial,
+                checksum,
+                str(local_path),
+                size_bytes,
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        self._connection.commit()
+
+    def list_verified_exports(self, serial: str | None = None) -> list[VerifiedExport]:
+        if serial:
+            rows = self._connection.execute(
+                """
+                SELECT remote_path, serial, checksum, local_path, size_bytes, exported_at
+                FROM verified_exports
+                WHERE serial = ?
+                ORDER BY exported_at DESC
+                """,
+                (serial,),
+            ).fetchall()
+        else:
+            rows = self._connection.execute(
+                """
+                SELECT remote_path, serial, checksum, local_path, size_bytes, exported_at
+                FROM verified_exports
+                ORDER BY exported_at DESC
+                """
+            ).fetchall()
+        return [VerifiedExport(*row) for row in rows]
+
+    def remove_verified_exports(self, remote_paths: list[str]) -> None:
+        if not remote_paths:
+            return
+        placeholders = ",".join("?" for _ in remote_paths)
+        self._connection.execute(
+            f"DELETE FROM verified_exports WHERE remote_path IN ({placeholders})",
+            remote_paths,
         )
         self._connection.commit()
 

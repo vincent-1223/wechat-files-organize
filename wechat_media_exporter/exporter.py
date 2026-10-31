@@ -60,6 +60,13 @@ def export_android_media(
                     result.duplicates.append(Path(known.first_path))
                     item.checksum = checksum
                     item.duplicate_of = known.first_path
+                    hash_index.record_verified_export(
+                        remote_path=item.remote_path,
+                        serial=serial,
+                        checksum=checksum,
+                        local_path=Path(known.first_path),
+                        size_bytes=item.size_bytes,
+                    )
                     temp_file.unlink(missing_ok=True)
                 else:
                     detected_kind = detect_media_kind(temp_file)
@@ -81,6 +88,13 @@ def export_android_media(
                     target_path = unique_destination(target_directory, filename)
                     shutil.move(temp_file, target_path)
                     hash_index.add(checksum, item.size_bytes, target_path)
+                    hash_index.record_verified_export(
+                        remote_path=item.remote_path,
+                        serial=serial,
+                        checksum=checksum,
+                        local_path=target_path,
+                        size_bytes=item.size_bytes,
+                    )
                     item.checksum = checksum
                     item.local_path = target_path
                     result.exported.append(target_path)

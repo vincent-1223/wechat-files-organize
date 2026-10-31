@@ -2,8 +2,8 @@
 
 ## 产物
 
-- `WeChat-Files-Organize-Portable-0.1.0.exe`：单文件便携版，双击启动。
-- `WeChat-Files-Organize-Setup-0.1.0.exe`：按当前用户安装，无需管理员权限。
+- `WeChat-Files-Organize-Portable-0.2.0.exe`：单文件便携版，双击启动。
+- `WeChat-Files-Organize-Setup-0.2.0.exe`：按当前用户安装，无需管理员权限。
 
 便携版和安装版均内嵌官方 Android Platform Tools（ADB），不依赖系统单独安装。
 

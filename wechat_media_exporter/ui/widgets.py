@@ -138,7 +138,12 @@ def _round_rect(painter: QPainter, rect: QRect, radius: float, color: QColor) ->
     painter.drawRoundedRect(rect, radius, radius)
 
 
-def build_thumbnail(item: MediaItem, size: QSize, selected: bool) -> QPixmap:
+def build_thumbnail(
+    item: MediaItem,
+    size: QSize,
+    selected: bool,
+    image_path: Path | None = None,
+) -> QPixmap:
     device_ratio = 2
     pixmap = QPixmap(size * device_ratio)
     pixmap.setDevicePixelRatio(device_ratio)
@@ -147,7 +152,8 @@ def build_thumbnail(item: MediaItem, size: QSize, selected: bool) -> QPixmap:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     canvas = QRect(0, 0, size.width(), size.height())
 
-    local_thumbnail = _read_local_thumbnail(item.local_path, size) if item.local_path else None
+    preview_path = image_path or item.local_path
+    local_thumbnail = _read_local_thumbnail(preview_path, size) if preview_path else None
     if local_thumbnail:
         painter.drawPixmap(canvas, local_thumbnail)
     else:
@@ -250,16 +256,20 @@ def build_thumbnail(item: MediaItem, size: QSize, selected: bool) -> QPixmap:
 
 class MediaCard(QFrame):
     selection_changed = Signal(object, bool)
+    open_requested = Signal(object)
 
     def __init__(self, item: MediaItem, parent: QWidget | None = None):
         super().__init__(parent)
         self.item = item
         self._selected = item.selected
+        self._preview_path: Path | None = None
         self.setObjectName("MediaCard")
         self.setFixedSize(128, 123)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip(f"{item.remote_path}\n来源：{item.source_root}")
+        self.setToolTip(
+            f"{item.remote_path}\n来源：{item.source_root}\n单击查看或播放，右上角勾选导出"
+        )
         self.setAccessibleName(f"{item.kind_label} {item.name}")
 
         layout = QVBoxLayout(self)
@@ -314,20 +324,39 @@ class MediaCard(QFrame):
     def toggle(self) -> None:
         self.set_selected(not self._selected)
 
+    def set_preview(self, path: Path) -> None:
+        self._preview_path = path
+        self._refresh()
+
     def _refresh(self) -> None:
         self.setProperty("selected", self._selected)
         self.style().unpolish(self)
         self.style().polish(self)
-        self.thumbnail.setPixmap(build_thumbnail(self.item, QSize(122, 75), self._selected))
+        self.thumbnail.setPixmap(
+            build_thumbnail(
+                self.item,
+                QSize(122, 75),
+                self._selected,
+                image_path=self._preview_path,
+            )
+        )
 
     def mouseReleaseEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         if event.button() == Qt.MouseButton.LeftButton:
-            self.toggle()
+            position = event.position().toPoint()
+            if QRect(self.width() - 31, 0, 31, 31).contains(position):
+                self.toggle()
+            else:
+                self.open_requested.emit(self.item)
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event) -> None:  # type: ignore[no-untyped-def]
-        if event.key() in {Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+        if event.key() == Qt.Key.Key_Space:
             self.toggle()
+            event.accept()
+            return
+        if event.key() in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+            self.open_requested.emit(self.item)
             event.accept()
             return
         super().keyPressEvent(event)
@@ -335,6 +364,7 @@ class MediaCard(QFrame):
 
 class MonthSection(QWidget):
     selection_changed = Signal(object, bool)
+    open_requested = Signal(object)
     select_month_requested = Signal(object)
 
     def __init__(
@@ -377,6 +407,7 @@ class MonthSection(QWidget):
         for item in items:
             card = MediaCard(item, grid_holder)
             card.selection_changed.connect(self.selection_changed)
+            card.open_requested.connect(self.open_requested)
             self.flow.addWidget(card)
             self.cards.append(card)
         layout.addWidget(grid_holder)

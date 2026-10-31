@@ -125,3 +125,7 @@ def test_export_groups_by_month_and_skips_exact_duplicates(tmp_path: Path) -> No
     assert (destination / "2026" / "10" / "Images" / "a.jpg").is_file()
     assert (destination / "2026" / "09" / "Videos" / "c.mp4").is_file()
     assert list((destination / "Reports").glob("export-*.json"))
+    with HashIndex(tmp_path / "index.sqlite3") as index:
+        verified = index.list_verified_exports("SERIAL")
+        assert len(verified) == 3
+        assert {Path(record.remote_path).name for record in verified} == {"a.jpg", "b.jpg", "c.mp4"}

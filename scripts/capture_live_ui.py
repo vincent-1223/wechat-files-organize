@@ -28,7 +28,10 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     def wait_for_scan() -> None:
-        if window._scan_running:
+        if not window._scan_running and window._preview_worker is None:
+            window._start_preview_loading()
+        preview_running = bool(window._preview_worker and window._preview_worker.isRunning())
+        if window._scan_running or preview_running:
             QTimer.singleShot(200, wait_for_scan)
             return
         QTimer.singleShot(

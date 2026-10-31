@@ -13,6 +13,7 @@ reports/
 screenshots/
 .tools/
 tools/adb/
+tools/ffmpeg/
 *.zip
 .idea/
 .vscode/
