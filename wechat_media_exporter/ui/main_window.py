@@ -69,8 +69,9 @@ class CapabilityDialog(QDialog):
         layout.addWidget(title)
 
         note = QLabel(
-            "这里只展示本次真实扫描结果。权限不足、目录不存在和缩略图会分别标记；"
-            "不会把缩略图冒充原图，也不会把已发现文件数当成聊天媒体总数。",
+            "这里只展示本次真实扫描结果。普通 ADB 无法读取微信私有应用沙盒，"
+            "因此聊天记录中的全部图片和视频不在当前结果内。已保存文件和可访问外部缓存"
+            "会正常扫描；缩略图不会冒充原图。",
             self,
         )
         note.setWordWrap(True)
@@ -1214,7 +1215,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于微信媒体整理",
-            "微信媒体整理 0.2.0\n\n"
+            "微信媒体整理 0.2.1\n\n"
             "本地运行，不上传媒体。\n"
             "通过 ADB 读取用户可访问的微信图片和视频。",
         )

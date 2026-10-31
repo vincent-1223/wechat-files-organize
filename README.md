@@ -27,8 +27,8 @@ Windows 桌面工具，通过 USB 和 ADB 读取 Android 手机中可访问的�
 
 从 GitHub Releases 下载：
 
-- `WeChat-Files-Organize-Setup-0.2.0.exe`：按当前用户安装，无需管理员权限。
-- `WeChat-Files-Organize-Portable-0.2.0.exe`：免安装，双击启动。
+- `WeChat-Files-Organize-Setup-0.2.1.exe`：按当前用户安装，无需管理员权限。
+- `WeChat-Files-Organize-Portable-0.2.1.exe`：免安装，双击启动。
 
 发布包内置 ADB，用户不需要单独安装 Android Platform Tools。当前版本未做商业代码签名，
 Windows SmartScreen 可能显示“未知发布者”。

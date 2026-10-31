@@ -46,6 +46,10 @@ def detect_media_kind(path: Path) -> MediaKind:
         header = path.read_bytes()[:16]
     except OSError:
         return "other"
+    return detect_media_header(header)
+
+
+def detect_media_header(header: bytes) -> MediaKind:
     if header.startswith(b"\xff\xd8\xff"):
         return "image"
     if header.startswith(b"\x89PNG\r\n\x1a\n"):

@@ -131,6 +131,24 @@ class AdbClient:
     ) -> subprocess.CompletedProcess[str]:
         return self._run(["-s", serial, "shell", command], timeout=timeout, check=check)
 
+    def exec_out(
+        self,
+        serial: str,
+        command_arguments: list[str],
+        *,
+        timeout: int = 90,
+    ) -> subprocess.CompletedProcess[bytes]:
+        creation_flags = 0
+        if os.name == "nt":
+            creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        return subprocess.run(
+            [str(self.executable), "-s", serial, "exec-out", *command_arguments],
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+            creationflags=creation_flags,
+        )
+
     def device_info(self, serial: str) -> DeviceInfo:
         model = self._shell_value(serial, "getprop ro.product.model")
         android_version = self._shell_value(serial, "getprop ro.build.version.release")
@@ -162,6 +180,18 @@ class AdbClient:
     def directory_listable(self, serial: str, remote_path: str) -> bool:
         result = self.shell(serial, f"ls -la {shlex.quote(remote_path)}", timeout=20)
         return result.returncode == 0
+
+    def directory_access(self, serial: str, remote_path: str) -> tuple[str, str]:
+        result = self.shell(serial, f"ls -la {shlex.quote(remote_path)}", timeout=20)
+        if result.returncode == 0:
+            return "readable", ""
+        message = f"{result.stderr}\n{result.stdout}".strip()
+        lowered = message.lower()
+        if "permission denied" in lowered or "denied" in lowered:
+            return "denied", "当前 ADB 权限无法列出目录"
+        if "no such file" in lowered or "not found" in lowered:
+            return "missing", "目录不存在"
+        return "error", message or "目录读取失败"
 
     def canonical_path(self, serial: str, remote_path: str) -> str:
         result = self.shell(serial, f"realpath {shlex.quote(remote_path)}", timeout=12)

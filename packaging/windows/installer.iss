@@ -1,5 +1,5 @@
 #define MyAppName "微信媒体整理"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.2.1"
 #define MyAppPublisher "WeChat Files Organize"
 #define MyAppExeName "WeChatFilesOrganize.exe"
 

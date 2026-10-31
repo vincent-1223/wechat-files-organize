@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -50,19 +49,7 @@ class MediaPreviewCache:
         return target
 
     def _read_image(self, item: MediaItem) -> Image.Image:
-        result = subprocess.run(
-            [
-                str(self.adb.executable),
-                "-s",
-                self.serial,
-                "exec-out",
-                "cat",
-                item.remote_path,
-            ],
-            capture_output=True,
-            timeout=90,
-            check=False,
-        )
+        result = self.adb.exec_out(self.serial, ["cat", item.remote_path])
         if result.returncode != 0 or not result.stdout:
             message = result.stderr.decode("utf-8", errors="replace").strip()
             raise RuntimeError(message or "无法读取图片")

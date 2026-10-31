@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
 from wechat_media_exporter.adb import AdbClient, AdbError
-from wechat_media_exporter.media_types import classify_media_path, looks_like_thumbnail
+from wechat_media_exporter.media_types import (
+    classify_media_path,
+    detect_media_header,
+    looks_like_thumbnail,
+)
 from wechat_media_exporter.models import MediaItem, ScanReport, SourceStatus
 
 scan_paths = (
@@ -17,6 +22,7 @@ scan_paths = (
     "/sdcard/tencent/MicroMsg",
     "/sdcard/Android/media/com.tencent.mm",
     "/sdcard/Android/data/com.tencent.mm",
+    "/data/user/0/com.tencent.mm",
 )
 
 
@@ -80,13 +86,9 @@ def scan_android(
         if progress:
             progress(round(index / len(candidates) * 100), f"正在探测 {remote_root}")
 
-        if not adb.directory_exists(device.serial, canonical_root):
-            report.sources.append(SourceStatus(canonical_root, "missing", "目录不存在"))
-            continue
-        if not adb.directory_listable(device.serial, canonical_root):
-            report.sources.append(
-                SourceStatus(canonical_root, "denied", "当前 ADB 权限无法列出目录")
-            )
+        access_state, access_message = adb.directory_access(device.serial, canonical_root)
+        if access_state != "readable":
+            report.sources.append(SourceStatus(canonical_root, access_state, access_message))
             continue
 
         try:
@@ -130,7 +132,37 @@ def scan_android(
             )
         )
 
+    extensionless = [
+        item for item in items_by_path.values() if item.kind == "other" and not item.extension
+    ]
+    if extensionless and progress:
+        progress(92, f"正在识别 {len(extensionless)} 个无扩展名文件")
+
+    def inspect_header(item: MediaItem) -> tuple[MediaItem, str]:
+        result = adb.exec_out(
+            device.serial,
+            ["head", "-c", "16", item.remote_path],
+            timeout=20,
+        )
+        kind = detect_media_header(result.stdout) if result.returncode == 0 else "other"
+        return item, kind
+
+    if extensionless:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(inspect_header, item) for item in extensionless]
+            for future in as_completed(futures):
+                item, detected_kind = future.result()
+                if detected_kind != "other":
+                    item.kind = detected_kind
+
     report.items = sorted(items_by_path.values(), key=lambda item: item.modified_at, reverse=True)
+    if any(
+        source.path.startswith("/data/") and source.state == "denied" for source in report.sources
+    ):
+        report.warning = (
+            "微信私有应用目录无法通过普通 ADB 读取；聊天记录中的全部图片和视频"
+            "不在当前扫描能力范围内。"
+        )
     report.elapsed_seconds = round(time.perf_counter() - started, 2)
     if progress:
         progress(100, "扫描完成")
